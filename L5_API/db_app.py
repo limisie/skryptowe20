@@ -1,5 +1,5 @@
-from L5_API.constants import DB_LIMITS
-from L5_API.db_manager import get_rates_dates_interpolated, get_sales_and_dates
+from constants import DB_LIMITS
+from db_manager import get_rates_dates_interpolated, get_sales_and_dates
 
 
 def get_rates_ipd(code, date_from, date_to):

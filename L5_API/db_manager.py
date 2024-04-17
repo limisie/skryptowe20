@@ -1,5 +1,6 @@
 import sqlite3
-from L5_API.constants import DB_PATH
+from constants import DB_PATH, CURRENCIES, DB_LIMITS
+from nbp_api_handler import currency_rates_dates_interpolated_time_frame
 
 
 def _connect_db():
@@ -13,7 +14,7 @@ def _connect_db():
     return conn
 
 
-def _drop_rates_table():
+def _drop_tables():
     conn = _connect_db()
     cursor = conn.cursor()
 
@@ -30,7 +31,7 @@ def _create_rates_table():
     cursor.execute("""CREATE TABLE rates (
                         RateDate data_type BLOB NOT NULL,
                         Rate data_type REAL NOT NULL,
-                        Code data_type TEXT NOT NULL,
+                        Code data_type TEXT NOT NULL collate nocase,
                         Interpolated BOOLEAN NOT NULL CHECK (Interpolated IN (0, 1)),
                         CONSTRAINT rates_pk PRIMARY KEY (RateDate, Code)
                    );""")
@@ -38,6 +39,19 @@ def _create_rates_table():
     conn.commit()
     conn.close()
 
+def _create_invoices_table():
+    conn = _connect_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""CREATE TABLE invoices (
+                        InvoiceDate data_type BLOB NOT NULL,
+                        Rate data_type REAL NOT NULL,
+                        Total NUMERIC(10,2) DEFAULT 0.00 NOT NULL,
+                        Total_pln NUMERIC(10,2) DEFAULT 0.00 NOT NULL
+                   );""")
+
+    conn.commit()
+    conn.close()
 
 def _get_invoices():
     conn = _connect_db()
@@ -111,9 +125,11 @@ def get_rates_dates_interpolated(currency_code, date_from, date_to):
     interpolated = []
 
     try:
-        cursor.execute("""SELECT Rate, RateDate, Interpolated FROM rates
-                            WHERE RateDate BETWEEN '{}' AND '{}'
-                            AND Code = '{}';""".format(date_from, date_to, currency_code))
+        query = """SELECT Rate, RateDate, Interpolated FROM rates
+                    WHERE RateDate BETWEEN '{}' AND '{}'
+                    AND Code = '{}';""".format(date_from, date_to, currency_code)
+        print(query)
+        cursor.execute(query)
         for rate, date, ipd in cursor.fetchall():
             rates.append(float(rate))
             dates.append(date)
@@ -140,9 +156,9 @@ def get_sales_and_dates(date_from, date_to):
 
     try:
         cursor.execute("""SELECT SUM(Total), SUM(Total_pln), InvoiceDate FROM invoices
-                                WHERE InvoiceDate BETWEEN '{}' AND '{}'
-                                GROUP BY InvoiceDate""".format('{} 00:00:00'.format(date_from),
-                                                               '{} 00:00:00'.format(date_to)))
+                            WHERE InvoiceDate BETWEEN '{}' AND '{}'
+                            GROUP BY InvoiceDate""".format('{} 00:00:00'.format(date_from),
+                                                            '{} 00:00:00'.format(date_to)))
         for sale_usd, sale_pln, date in cursor.fetchall():
             sales_usd.append(float(sale_usd))
             sales_pln.append(float(sale_pln))
@@ -194,3 +210,16 @@ def add_rate_entries(currency_code, dates, rates, interpolated):
 
 def add_rate_entry(currency_code, date, rate, interpolated):
     return add_rate_entries(currency_code, [date], [rate], [interpolated])
+
+
+def _create_db():
+    _create_rates_table()
+    _create_invoices_table()
+
+    for currency in CURRENCIES:
+        rates, dates, interpolated = currency_rates_dates_interpolated_time_frame(currency, DB_LIMITS[currency]['date_min'], DB_LIMITS[currency]['date_max'])
+        add_rate_entries(currency, dates, rates, interpolated)
+
+
+if __name__ == "__main__":
+    _create_db()

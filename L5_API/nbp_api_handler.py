@@ -1,7 +1,7 @@
 import requests
 from datetime import datetime, timedelta
 
-from L5_API.constants import DATE_FORMAT, MAX_TRIES, DATA_LIMIT
+from constants import DATE_FORMAT, MAX_TRIES, DATA_LIMIT
 
 
 def _url(path):
