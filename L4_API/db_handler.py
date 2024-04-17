@@ -1,9 +1,13 @@
 from datetime import datetime
+import pathlib
+import os
 import sqlite3
 import matplotlib.pyplot as plt
+from matplotlib import cycler
 import matplotlib.dates as mdates
 
-DB_FILE = '/Users/limi/Desktop/INF/5 JS/L/skryptowe20/L4_API/sales.db'
+BASE_DIR = pathlib.Path(__file__).parent.absolute()
+DB_FILE = os.path.join(BASE_DIR, 'sales.db')
 PLOT_SIZE_X = 14
 PLOT_SIZE_Y = 7
 PLOT_LEFT_POS = 0.07
@@ -11,7 +15,6 @@ PLOT_RIGHT_POS = 0.93
 PLOT_X_MARGINS = 0.01
 PLOT_BAR_WIDTH = 0.9
 PLOT_GRID_LW = 0.25
-
 PLOT_SAVE = False
 
 
@@ -40,46 +43,6 @@ def create_rates_table():
     conn.close()
 
 
-def get_sales(date):
-    conn = connect_db()
-    cursor = conn.cursor()
-
-    sales = []
-
-    try:
-        cursor.execute("""SELECT Total FROM invoices
-                            WHERE InvoiceDate = '{} 00:00:00'""".format(date))
-        sales = [float(x[0]) for x in cursor.fetchall()]
-    except sqlite3.Error as e:
-        print('db_handler: get_sales ' + str(e))
-
-    conn.close()
-
-    return sales
-
-
-def get_total_sale(date):
-    return sum(get_sales(date))
-
-
-def get_rate(date, currency_code):
-    conn = connect_db()
-    cursor = conn.cursor()
-    rate = 0.0
-
-    try:
-        cursor.execute("""SELECT Rate FROM rates
-                            WHERE RateDate = '{}'
-                            AND Code = '{}';""".format(date, currency_code))
-        rate = float(cursor.fetchone()[0])
-    except sqlite3.Error as e:
-        print('db_handler: get_rate(' + date + ', ' + currency_code + ') ' + str(e))
-
-    conn.close()
-
-    return rate
-
-
 def get_rates_and_dates(currency_code, date_from, date_to):
     conn = connect_db()
     cursor = conn.cursor()
@@ -94,11 +57,49 @@ def get_rates_and_dates(currency_code, date_from, date_to):
             rates.append(float(rate))
             dates.append(date)
     except sqlite3.Error as e:
-        print('db_handler: get_rates' + str(e))
+        print('db_handler: get_rates_and_dates' + str(e))
 
     conn.close()
 
     return rates, dates
+
+
+def get_rate_and_date(date, currency_code):
+    return get_rates_and_dates(currency_code, date, date)
+
+
+def add_rate_entries(dates, rates, currency_code):
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    try:
+        for i in range(len(dates)):
+            cursor.execute("""INSERT INTO rates VALUES (:RateDate, :Rate, :Code)""",
+                           {'RateDate': dates[i], 'Rate': rates[i], 'Code': currency_code})
+        conn.commit()
+    except sqlite3.Error as e:
+        print('db_handler: add_rate_entries ' + str(e))
+
+    conn.close()
+
+
+def add_rate_entry(date, rate, currency_code):
+    add_rate_entries([date], [rate], currency_code)
+
+
+def delete_rate_entry(currency_code, date):
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""DELETE FROM rates
+                            WHERE RateDate = '{}'
+                            AND Code = '{}';""".format(date, currency_code))
+        conn.commit()
+    except sqlite3.Error as e:
+        print('db_handler: delete_rate_entry ' + str(e))
+
+    conn.close()
 
 
 def get_sales_and_dates(date_from, date_to):
@@ -117,55 +118,15 @@ def get_sales_and_dates(date_from, date_to):
             sales.append(float(sale))
             dates.append(date[:10])
     except sqlite3.Error as e:
-        print('db_handler: get_sales' + str(e))
+        print('db_handler: get_sales_and_dates' + str(e))
 
     conn.close()
 
     return sales, dates
 
 
-def add_rate_entry(date, rate, currency_code):
-    conn = connect_db()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("""INSERT INTO rates VALUES (:RateDate, :Rate, :Code)""",
-                       {'RateDate': date, 'Rate': rate, 'Code': currency_code})
-        conn.commit()
-    except sqlite3.Error as e:
-        print('db_handler: add_rate_entry ' + str(e))
-
-    conn.close()
-
-
-def delete_rate_entry(date, currency_code):
-    conn = connect_db()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("""DELETE FROM rates 
-                            WHERE RateDate = '{}'
-                            AND Code = '{}'""".format(date, currency_code))
-        conn.commit()
-    except sqlite3.Error as e:
-        print('db_handler: delete_rate_entry ' + str(e))
-
-    conn.close()
-
-
-def add_rate_entries(dates, rates, currency_code):
-    conn = connect_db()
-    cursor = conn.cursor()
-
-    try:
-        for i in range(len(dates)):
-            cursor.execute("""INSERT INTO rates VALUES (:RateDate, :Rate, :Code)""",
-                           {'RateDate': dates[i], 'Rate': rates[i], 'Code': currency_code})
-        conn.commit()
-    except sqlite3.Error as e:
-        print('db_handler: add_rate_entries ' + str(e))
-
-    conn.close()
+def get_sale_and_date(date):
+    return get_sales_and_dates(date, date)
 
 
 def data_to_plot(currency_code, date_from, date_to):
@@ -189,6 +150,9 @@ def data_to_plot(currency_code, date_from, date_to):
 
 
 def plot_sale_time_frame(currency_code, date_from, date_to):
+    colors = cycler('color', ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
+    plt.rc('axes', prop_cycle=colors)
+
     sale_dates, sales_usd, sales_pln = data_to_plot(currency_code, date_from, date_to)
 
     fig, ax = plt.subplots(figsize=(PLOT_SIZE_X, PLOT_SIZE_Y))
@@ -214,8 +178,3 @@ def plot_sale_time_frame(currency_code, date_from, date_to):
     plt.show()
     if PLOT_SAVE:
         plt.savefig('sales.svg')
-
-
-if __name__ == '__main__':
-    # create_rates_table()
-    pass
